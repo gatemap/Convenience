@@ -16,26 +16,48 @@ function startAutoSlotPull() {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // 버튼이 실제로 비활성화 상태인지 다각도로 엄격하게 판별하는 함수
+  function isButtonDisabled(btn) {
+    if (!btn) return true;
+
+    // 1. 표준 disabled 속성/프로퍼티 확인
+    if (btn.disabled || btn.getAttribute('disabled') !== null) return true;
+
+    // 2. 접근성(ARIA) 비활성화 속성 확인
+    if (btn.getAttribute('aria-disabled') === 'true') return true;
+
+    // 3. 흔히 쓰이는 비활성화 관련 클래스명 검사
+    const classListStr = btn.className.toLowerCase();
+    const disabledClasses = ['disabled', 'is-disabled', 'disable', 'off', 'inactive', 'lock', 'locked', 'dimmed', 'readonly'];
+    if (disabledClasses.some(cls => classListStr.includes(cls))) return true;
+
+    // 4. CSS 스타일을 통한 클릭 차단 상태 검사
+    const style = window.getComputedStyle(btn);
+    if (style.pointerEvents === 'none' || style.display === 'none' || style.visibility === 'hidden') return true;
+
+    // 5. 시각적으로 비활성화된 것처럼 투명도가 지나치게 낮은 경우
+    if (parseFloat(style.opacity) < 0.6) return true;
+
+    return false;
+  }
+
   // 지정된 푸터 영역 및 문서 내에서 활성화된 "슬롯 당기기" 버튼을 찾는 함수
   function findSlotButton() {
-    // 사용자가 지정한 클래스를 포함하는 다이얼로그 푸터 영역 탐색
     const footerContainer = document.querySelector('div.stds-dialog-footer');
     let targetBtn = null;
+    const selector = 'button, [role="button"]';
 
     if (footerContainer) {
-      targetBtn = [...footerContainer.querySelectorAll('button')].find(btn => {
+      targetBtn = [...footerContainer.querySelectorAll(selector)].find(btn => {
         const text = btn.innerText.trim();
-        const isDisabled = btn.disabled || btn.classList.contains('disabled');
-        return text.includes('슬롯 당기기') && !isDisabled;
+        return text.includes('슬롯 당기기') && !isButtonDisabled(btn);
       });
     }
 
-    // 만약 푸터 영역에서 찾지 못했거나 컨테이너가 없다면 전체 문서에서 탐색
     if (!targetBtn) {
-      targetBtn = [...document.querySelectorAll('button')].find(btn => {
+      targetBtn = [...document.querySelectorAll(selector)].find(btn => {
         const text = btn.innerText.trim();
-        const isDisabled = btn.disabled || btn.classList.contains('disabled');
-        return text.includes('슬롯 당기기') && !isDisabled;
+        return text.includes('슬롯 당기기') && !isButtonDisabled(btn);
       });
     }
 
@@ -51,10 +73,10 @@ function startAutoSlotPull() {
 
     console.log(`🔍 [${currentTries + 1}/${maxTries}] "슬롯 당기기" 버튼 활성화 대기 중...`);
 
-    // 버튼이 활성화될 때까지 대기 (최대 15초 타임아웃)
+    // 1단계: 버튼이 활성화될 때까지 대기 (최대 30초 타임아웃)
     let btn = null;
     const startTime = Date.now();
-    const timeout = 15000; 
+    const timeout = 30000; 
 
     while (!btn && !stopRequested) {
       btn = findSlotButton();
@@ -65,7 +87,7 @@ function startAutoSlotPull() {
         isRunning = false;
         return;
       }
-      await delay(500); // 0.5초 간격으로 버튼 활성화 여부 확인
+      await delay(500);
     }
 
     if (stopRequested) {
@@ -74,13 +96,41 @@ function startAutoSlotPull() {
       return;
     }
 
-    // 버튼 클릭 실행
+    // 2단계: 버튼 클릭 실행
     btn.click();
     currentTries++;
-    console.log(`✨ [${currentTries}/${maxTries}] "슬롯 당기기" 버튼 클릭 완료!`);
+    console.log(`✨ [${currentTries}/${maxTries}] "슬롯 당기기" 버튼 클릭 완료! 보상 확정 및 재활성화 대기 중...`);
 
-    // 슬롯 애니메이션 및 결과 처리가 진행될 수 있도록 충분히 대기 (예: 2초)
-    await delay(2000);
+    // 클릭 직후 UI가 반응할 수 있도록 1초 대기
+    await delay(1000);
+
+    // 3단계: 보상이 확정되어 "슬롯 당기기" 버튼이 다시 활성화될 때까지 대기 (최대 60초 타임아웃)
+    const rewardWaitStart = Date.now();
+    const rewardTimeout = 60000;
+    let nextBtn = null;
+
+    while (!stopRequested) {
+      nextBtn = findSlotButton();
+      if (nextBtn) {
+        // 버튼이 다시 활성화됨 = 보상 확정 완료 상태
+        console.log(`🔓 보상 확정 확인됨. 다음 회차 준비 완료.`);
+        break;
+      }
+
+      if (Date.now() - rewardWaitStart > rewardTimeout) {
+        console.warn('⚠️ 보상 확정 대기 시간 초과: 버튼이 다시 활성화되지 않았습니다. 자동 중단.');
+        isRunning = false;
+        return;
+      }
+
+      await delay(500); // 0.5초 간격으로 버튼 활성화 여부 확인
+    }
+
+    if (stopRequested) {
+      console.log('⛔ 중단됨.');
+      isRunning = false;
+      return;
+    }
 
     // 다음 회차 진행
     setTimeout(step, 500);
