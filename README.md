@@ -7,5 +7,5 @@
 - 100 플레이크 뽑기 자동화
 
 ## Stove 슬롯 당기기 자동화
-- 진행중
+- FlakeSlotMachine.js
 - 아직 미완성
