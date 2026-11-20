@@ -8,4 +8,4 @@
 
 ## Stove 슬롯 당기기 자동화
 - [슬롯 당기기 자동화](https://github.com/gatemap/Convenience/blob/main/FlakeSlotMachine)
-- 아직 미완성
+- 당첨 플레이크만 console.log에 획득, 누적 표기를 하고 있는데 꽝(10 플레이크)는 아직
