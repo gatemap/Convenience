@@ -2,7 +2,7 @@ function startAutoSlotPull() {
     let isRunning = false;
     let stopRequested = false;
     let totalFlakesSum = 0; // 누적 플레이크 합계
- 
+
     // ESC 키를 누르면 언제든지 중단할 수 있는 안전장치
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -10,87 +10,94 @@ function startAutoSlotPull() {
         console.log('⛔ ESC 키 입력 → 자동 반복 중단 요청됨');
       }
     });
- 
+
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
- 
+
     // 버튼이 비활성화 상태인지 판단하는 함수
     function isButtonDisabled(btn) {
       if (!btn) return true;
       if (btn.disabled || btn.getAttribute('disabled') !== null) return true;
       if (btn.getAttribute('aria-disabled') === 'true') return true;
-      
-      if (btn.classList.contains('disabled') || btn.classList.contains('is-disabled') || btn.classList.contains('inactive'))
-          return true;
- 
+
+      if (btn.classList.contains('disabled') || btn.classList.contains('is-disabled') || btn.classList.contains('inactive')) {
+        return true;
+      }
+
       return false;
     }
- 
+
     // 내부 슬롯 버튼과 잔여 횟수를 찾는 함수
     function findInternalSlotButton() {
       const buttons = [...document.querySelectorAll('button, [role="button"]')];
-      
+
       const slotBtn = buttons.find(btn => {
         const text = btn.innerText.trim();
         const hasSlotText = text.includes('슬롯 당기기');
         const hasMinH60 = btn.className.includes('min-h-60');
         const hasStdsText = btn.querySelector('span.stds-text') !== null;
- 
-        const isInsidePopup = 
-          btn.closest('div.slot-machine-dialog__content') !== null || 
+
+        const isInsidePopup =
+          btn.closest('div.slot-machine-dialog__content') !== null ||
           btn.closest('div.stds-dialog-footer') !== null;
-        
+
         return isInsidePopup && (hasSlotText || hasMinH60 || hasStdsText);
       });
- 
+
       if (!slotBtn) return { btn: null, count: null };
- 
+
       const span = slotBtn.querySelector('span.stds-text');
       const spanText = span ? span.innerText.trim() : '';
       const fullText = slotBtn.innerText.trim();
- 
+
       let count = null;
       if (spanText) {
         const num = parseInt(spanText, 10);
         if (!isNaN(num)) count = num;
       }
- 
+
       if (count === null) {
         const match = fullText.match(/(\d+)/);
         if (match) count = parseInt(match[1], 10);
       }
- 
+
       return { btn: slotBtn, count };
     }
- 
-    // 특정 클래스를 가진 p 태그에서 당첨된 플레이크 숫자를 읽어오는 함수
+
+    // div[data-v-d30009fe] 내부 텍스트/HTML을 확인하며 플레이크 숫자 추출
     async function getFlakeRewardWithRetry() {
       const startTime = Date.now();
-      
+
       while (Date.now() - startTime < 1500) {
-        const targetP = document.querySelector('div[data-v-d30009fe] p.stds-text.text-text4.line-clamp-2');
-        
-        if (targetP) {
-          const text = targetP.innerText.trim();
-          if (text.includes('플레이크')) {
-            const match = text.match(/([\d,]+)\s*플레이크/);
-            if (match) {
-              const flakeVal = parseInt(match[1].replace(/,/g, ''), 10);
-              return flakeVal; // 0이라도 당첨 결과면 리턴
-            }
+        const containers = [...document.querySelectorAll('div[data-v-d30009fe]')];
+        for (const container of containers) {
+          const allText = (container.innerText || container.textContent || '').replace(/\s+/g, ' ').trim();
+          const match = allText.match(/([\d,]+)\s*플레이크/);
+          if (match) {
+            return parseInt(match[1].replace(/,/g, ''), 10);
           }
         }
         await delay(100);
       }
+
+      const containers = [...document.querySelectorAll('div[data-v-d30009fe]')];
+      if (containers.length === 0) {
+        console.log('⚠️ div[data-v-d30009fe] 요소 자체를 찾지 못했습니다.');
+      } else {
+        containers.forEach((c, idx) => {
+          console.log(`⚠️ [디버그 div#${idx}] innerText:`, JSON.stringify((c.innerText || '').trim()));
+          console.log(`⚠️ [디버그 div#${idx}] innerHTML:`, c.innerHTML);
+        });
+      }
       return 0;
     }
- 
+
     async function run() {
       if (isRunning) return;
       isRunning = true;
       console.log('🚀 슬롯 자동 반복 스크립트 시작');
- 
+
       // 1단계: 초기 '슬롯 당기기' 버튼을 찾아 클릭하여 팝업 열기
       const candidates = [...document.querySelectorAll('button, [role="button"], div[role="button"]')];
       const initialBtn = candidates.find(btn => {
@@ -98,19 +105,19 @@ function startAutoSlotPull() {
         const isInDialog = btn.closest('div.slot-machine-dialog__content') !== null || btn.closest('div.stds-dialog-footer') !== null;
         const hasMinH52 = btn.className.includes('min-h-52');
         const hasSlotText = text.includes('슬롯 당기기');
- 
+
         return !isInDialog && (hasMinH52 || hasSlotText);
       });
- 
+
       if (initialBtn) {
         initialBtn.click();
       }
- 
+
       // 2단계: 내부 슬롯 버튼이 로딩될 때까지 대기
       console.log('🔍 내부 슬롯 버튼 로딩 대기 중...');
       let btnInfo = { btn: null, count: null };
       const waitStart = Date.now();
- 
+
       while (Date.now() - waitStart < 5000) {
         btnInfo = findInternalSlotButton();
         if (btnInfo.btn && btnInfo.count !== null) {
@@ -119,44 +126,39 @@ function startAutoSlotPull() {
         }
         await delay(300);
       }
- 
+
       if (!btnInfo.btn || btnInfo.count === null) {
         console.log('❌ 대기 시간 초과: 내부 슬롯 버튼을 찾지 못했습니다.');
         isRunning = false;
         return;
       }
- 
+
       let tries = 0;
-      let isFirstPull = true; // 첫 번째 클릭 전에는 이전 결과가 없으므로 구분용 플래그
- 
-      // 3단계: 반복 실행 루프 (사용자 요구 순서 반영)
+      let isFirstPull = true;
+      let finishedAfterLastPull = false;
+
+      // 3단계: 반복 실행 루프
       while (!stopRequested) {
         // [A] 버튼이 활성화(클릭 가능) 상태가 될 때까지 대기 (애니메이션 완료 대기)
         let currentBtnInfo = null;
         while (!stopRequested) {
           currentBtnInfo = findInternalSlotButton();
           if (!currentBtnInfo.btn) break;
- 
-          // 횟수가 0이고 버튼이 비활성화 상태면 종료 조건
-          if (currentBtnInfo.count === 0 && isButtonDisabled(currentBtnInfo.btn)) {
-            break;
-          }
- 
+
           // 버튼이 활성화(클릭 가능) 상태라면 대기 탈출
           if (!isButtonDisabled(currentBtnInfo.btn)) {
             break;
           }
           await delay(200);
         }
- 
+
         if (stopRequested) break;
- 
-        // 횟수가 0이고 비활성화 상태면 최종 종료
-        if (currentBtnInfo.count === 0 && isButtonDisabled(currentBtnInfo.btn)) {
-          console.log(`✅ 슬롯 잔여 횟수가 0이 되었습니다! 총 ${tries}회 수행 완료. (총 누적: ${totalFlakesSum.toLocaleString()} 플레이크)`);
+
+        if (!currentBtnInfo || !currentBtnInfo.btn) {
+          console.log('❌ 슬롯 버튼이 사라졌습니다. 종료합니다.');
           break;
         }
- 
+
         // [B] 첫 회차가 아니라면, 버튼이 활성화된 시점에 직전 회차의 결과(당첨 플레이크)를 읽어와 기록 및 누적
         if (!isFirstPull) {
           const currentFlake = await getFlakeRewardWithRetry();
@@ -165,29 +167,41 @@ function startAutoSlotPull() {
         } else {
           isFirstPull = false;
         }
- 
-        // 잔여 횟수가 0에 도달했다면 마지막 결과 반영 후 탈출
-        if (currentBtnInfo.count === 0) {
-          console.log(`✅ 모든 횟수를 소진하여 종료합니다! (최종 누적: ${totalFlakesSum.toLocaleString()} 플레이크)`);
+
+        // 마지막 회차를 이미 돌리고 직전 결과까지 집계했다면 종료
+        if (finishedAfterLastPull) {
+          console.log(`✅ 슬롯 잔여 횟수가 0이 되었습니다! 총 ${tries}회 수행 완료. (총 누적: ${totalFlakesSum.toLocaleString()} 플레이크)`);
           break;
         }
- 
+
+        // 남은 횟수가 0이면 더 이상 클릭하지 않고 종료 (이전 회차 결과는 위 [B]에서 이미 반영됨)
+        if (currentBtnInfo.count === 0) {
+          console.log(`✅ 슬롯 잔여 횟수가 0이 되었습니다! 총 ${tries}회 수행 완료. (총 누적: ${totalFlakesSum.toLocaleString()} 플레이크)`);
+          break;
+        }
+
         // [C] 버튼 클릭 실행
+        const countBeforeClick = currentBtnInfo.count;
         currentBtnInfo.btn.click();
         tries++;
-        console.log(`✨ [${tries}회차] 슬롯 당기기 클릭 완료! (남은 횟수: ${currentBtnInfo.count})`);
- 
+        console.log(`✨ [${tries}회차] 슬롯 당기기 클릭 완료! (남은 횟수: ${countBeforeClick})`);
+
+        // 이번 클릭이 마지막 1회였다면, 다음 루프에서 결과 집계 후 종료하도록 표시
+        if (countBeforeClick === 1) {
+          finishedAfterLastPull = true;
+        }
+
         // 클릭 직후 버튼이 비활성화 상태로 바뀔 수 있도록 짧게 대기
         await delay(400);
       }
- 
+
       if (stopRequested) {
         console.log(`⛔ 사용자에 의해 중단되었습니다. (최종 누적 플레이크: ${totalFlakesSum.toLocaleString()}개)`);
       }
- 
+
       isRunning = false;
     }
- 
+
     run();
 }
 
